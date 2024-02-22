@@ -45,3 +45,25 @@ variable "db-cidr" {
 variable "route-config" {
     type = string
 }
+
+variable "application_port" {
+  type = string
+}
+
+variable "webapp-firewall" {
+  type = string
+}
+
+
+// Instance Variables
+variable "instance_image" {
+  type = string
+}
+
+variable "instance_machine_type" {
+  type = string
+}
+
+variable "instance_name" {
+  type = string
+}
