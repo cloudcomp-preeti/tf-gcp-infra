@@ -67,3 +67,67 @@ variable "instance_machine_type" {
 variable "instance_name" {
   type = string
 }
+
+variable "googlecred" {
+  type = string
+}
+
+variable "ip_name" {
+  type = string
+}
+
+variable "ip_purpose" {
+  type = string
+}
+
+variable "ip_type" {
+  type = string
+}
+
+variable "service_name" {
+  type = string
+}
+
+variable "db_instance_name" {
+  type = string
+}
+
+variable "database_version" {
+  type = string
+}
+
+variable "db_tier" {
+  type = string
+}
+
+variable "db_disk_type" {
+  type = string
+}
+
+variable "db_size" {
+  type = number
+}
+
+variable "db_availablity_type" {
+  type = string
+}
+
+variable "sql_db_name" {
+  type = string
+}
+
+variable "override_special" {
+  type = string
+}
+
+variable "sql_user_name" {
+  type = string
+}
+
+variable "postgres_port" {
+  type = string
+}
+
+variable "postgres_dialect" {
+  type = string
+}
