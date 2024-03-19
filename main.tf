@@ -42,7 +42,7 @@ output "latest_custom_image_name" {
 }
 
 resource "google_compute_firewall" "allow" {
-  name    = "allow-firewall"
+  name    = var.allow-firewall
   network = google_compute_network.vpc.self_link
 
   allow {
@@ -51,23 +51,23 @@ resource "google_compute_firewall" "allow" {
 
   allow {
     protocol = "tcp"
-    ports    = [var.application_port, "5432"]
+    ports    = [var.application_port, var.postgres-port, var.ssh-port]
   }
   target_tags = ["http-server"]
   source_ranges = ["0.0.0.0/0", google_compute_subnetwork.webapp_subnet.ip_cidr_range]
   
 }
 
-resource "google_compute_firewall" "deny" {
-  name    = "deny-firewall"
-  network = google_compute_network.vpc.self_link
+# resource "google_compute_firewall" "deny" {
+#   name    = "deny-firewall"s
+#   network = google_compute_network.vpc.self_link
 
-  deny {
-    protocol = "tcp"
-    ports    = ["22"]
-  }
-  source_ranges = ["0.0.0.0/0"]
-}
+#   deny {
+#     protocol = "tcp"
+#     ports    = ["22"]
+#   }
+#   source_ranges = ["0.0.0.0/0"]
+# }
 
 # Private IP Configuration
 resource "google_compute_global_address" "private_ip_address" {
@@ -123,16 +123,48 @@ resource "google_sql_user" "webapp_user" {
   depends_on = [google_sql_database.webapp_db]
 }
 
+resource "google_service_account" "service_account" {
+  account_id   = var.service-acc-id
+  display_name = var.service-acc-dispname
+  project = var.project_id
+}
+
+resource "google_project_iam_binding" "logging_admin_binding" {
+  project = var.project_id
+  role    = var.role-logging
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}"
+  ]
+}
+
+resource "google_project_iam_binding" "metric_writer_binding" {
+  project = var.project_id
+  role    = var.role-monitormetric
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}"
+  ]
+}
+
+resource "google_dns_record_set" "dns_record" {
+  name        = "preetikulk.me."
+  type        = "A"
+  ttl         = 2
+  managed_zone = "cloud-zone"
+  rrdatas = [
+    google_compute_instance.vm-instance.network_interface.0.access_config.0.nat_ip,
+  ]
+}
+
 resource "google_compute_instance" "vm-instance" {
   boot_disk {
     initialize_params {
-      image = data.google_compute_image.latest_custom_image.self_link // var.instance_image
+      image = data.google_compute_image.latest_custom_image.self_link
       size  = 100
       type  = "pd-balanced"
     }
   }
-  machine_type = "e2-medium" //var.machine_type
-  name         = "vm-instance" // var.name
+  machine_type = "e2-medium"
+  name         = "vm-instance"
 
   network_interface {
     access_config {
@@ -140,6 +172,12 @@ resource "google_compute_instance" "vm-instance" {
     network = google_compute_network.vpc.self_link
     subnetwork  = google_compute_subnetwork.webapp_subnet.self_link
   }
+
+  service_account {
+    email  = google_service_account.service_account.email
+    scopes = ["cloud-platform"]
+  }
+
   zone = "us-west1-b"
   metadata_startup_script = <<-EOT
     #!/bin/bash
@@ -154,5 +192,5 @@ resource "google_compute_instance" "vm-instance" {
     echo "DB_DIALECT=${var.postgres_dialect}" >> "$env_file"
   EOT
   tags = ["http-server"]
-  depends_on = [ google_compute_firewall.allow, google_compute_subnetwork.webapp_subnet ]
+  depends_on = [ google_compute_firewall.allow, google_compute_subnetwork.webapp_subnet, google_service_account.service_account]
 }

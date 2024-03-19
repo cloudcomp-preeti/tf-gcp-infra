@@ -54,6 +54,33 @@ variable "webapp-firewall" {
   type = string
 }
 
+variable "allow-firewall" {
+  type = string
+}
+
+variable "postgres-port" {
+  type = string
+}
+
+variable "ssh-port" {
+  type = string
+}
+
+variable "service-acc-id" {
+  type = string
+}
+
+variable "service-acc-dispname" {
+  type = string
+}
+
+variable "role-logging" {
+  type = string
+}
+
+variable "role-monitormetric" {
+  type = string
+}
 
 // Instance Variables
 variable "instance_image" {
