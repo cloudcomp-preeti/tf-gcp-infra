@@ -58,16 +58,16 @@ resource "google_compute_firewall" "allow" {
   
 }
 
-# resource "google_compute_firewall" "deny" {
-#   name    = "deny-firewall"s
-#   network = google_compute_network.vpc.self_link
+resource "google_compute_firewall" "deny" {
+  name    = "deny-firewall"
+  network = google_compute_network.vpc.self_link
 
-#   deny {
-#     protocol = "tcp"
-#     ports    = ["22"]
-#   }
-#   source_ranges = ["0.0.0.0/0"]
-# }
+  deny {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+  source_ranges = ["0.0.0.0/0"]
+}
 
 # Private IP Configuration
 resource "google_compute_global_address" "private_ip_address" {
@@ -146,10 +146,10 @@ resource "google_project_iam_binding" "metric_writer_binding" {
 }
 
 resource "google_dns_record_set" "dns_record" {
-  name        = "preetikulk.me."
+  name        = var.dns-const
   type        = "A"
-  ttl         = 2
-  managed_zone = "cloud-zone"
+  ttl         = 200
+  managed_zone = var.dns-managed-zone
   rrdatas = [
     google_compute_instance.vm-instance.network_interface.0.access_config.0.nat_ip,
   ]

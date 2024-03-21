@@ -158,3 +158,11 @@ variable "postgres_port" {
 variable "postgres_dialect" {
   type = string
 }
+
+variable "dns-const" {
+  type = string
+}
+
+variable "dns-managed-zone" {
+  type = string
+}
