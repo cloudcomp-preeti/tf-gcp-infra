@@ -166,3 +166,129 @@ variable "dns-const" {
 variable "dns-managed-zone" {
   type = string
 }
+
+variable "pub-service-acc-id" {
+  type = string
+}
+
+variable "pub-service-acc-dispname" {
+  type = string
+}
+
+variable "role-publisher" {
+  type = string
+}
+
+variable "topic-name" {
+  type = string
+}
+
+variable "message-retention" {
+  type = string
+}
+
+variable "subscription-name" {
+  type = string
+}
+
+variable "sub-ttl" {
+  type = string
+}
+variable "arch-type" {
+  type = string
+}
+variable "output_path" {
+  type = string
+}
+variable "source_dir" {
+  type = string
+}
+variable "bucket_obj" {
+  type = string
+}
+variable "connector-name" {
+  type = string
+}
+variable "connector-ip-range" {
+  type = string
+}
+
+variable "cf-name" {
+  type = string
+}
+
+variable "cf-description" {
+  type = string
+}
+
+variable "cf-runtime" {
+  type = string
+}
+
+variable "cf-entrypoint" {
+  type = string
+}
+
+variable "serv-maxins-count" {
+  type = number
+}
+
+variable "serv-minins-count" {
+  type = number
+}
+
+variable "serv-memory" {
+  type = string
+}
+
+variable "serv-timeout" {
+  type = number
+}
+
+variable "serv-cpu" {
+  type = string
+}
+
+variable "mailgun-apikey" {
+  type = string
+}
+
+variable "egress-settings" {
+  type = string
+}
+
+variable "event-trigger-type" {
+  type = string
+}
+
+variable "event-retry-policy" {
+  type = string
+}
+
+variable "cloud-run-role" {
+  type = string
+}
+
+variable "zone" {
+  type = string
+}
+
+variable "init-type" {
+  type = string
+}
+
+variable "machine-type" {
+  type = string
+}
+
+variable "ins-name" {
+  type = string
+}
+
+variable "serv-scope" {
+  type = string
+}
+
+variable "vm-tags" {
+  type = string
+}
