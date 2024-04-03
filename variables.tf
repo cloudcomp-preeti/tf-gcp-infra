@@ -292,3 +292,155 @@ variable "serv-scope" {
 variable "vm-tags" {
   type = string
 }
+
+variable "ssl-certificate" {
+  type = string
+}
+
+variable "ssl-key" {
+  type = string
+}
+
+variable "ssl-name" {
+  type = string
+}
+
+variable "proxy-name" {
+  type = string
+}
+
+variable "proxy-cidr" {
+  type = string
+}
+
+variable "proxy-purpose" {
+  type = string
+}
+
+variable "proxy-role" {
+  type = string
+}
+
+variable "dir" {
+  type = string
+}
+
+variable "https-port" {
+  type = string
+}
+
+variable "vm-template-name" {
+  type = string
+}
+
+variable "vm-template-desc" {
+  type = string
+}
+
+variable "hc-name" {
+  type = string
+}
+
+variable "hc-desc" {
+  type = string
+}
+
+variable "hc-port-spec" {
+  type = string
+}
+
+variable "hc-req-path" {
+  type = string
+}
+
+variable "hc-header" {
+  type = string
+}
+
+variable "gm-name" {
+  type = string
+}
+
+variable "gm-base-name" {
+  type = string
+}
+
+variable "gm-default" {
+  type = string
+}
+
+variable "pool-name" {
+  type = string
+}
+
+variable "as-name" {
+  type = string
+}
+
+variable "as-mode" {
+  type = string
+}
+
+variable "gca-name" {
+  type = string
+}
+
+variable "gca-addr" {
+  type = string
+}
+
+variable "gca-ntk" {
+  type = string
+}
+
+variable "fr-name" {
+  type = string
+}
+
+variable "fr-protocol" {
+  type = string
+}
+
+variable "fr-scheme" {
+  type = string
+}
+
+variable "fr-port" {
+  type = string
+}
+
+variable "fr-tier" {
+  type = string
+}
+
+variable "pt-name" {
+  type = string
+}
+
+variable "um-name" {
+  type = string
+}
+
+variable "bs-name" {
+  type = string
+}
+
+variable "bs-scheme" {
+  type = string
+}
+
+variable "bs-portname" {
+  type = string
+}
+
+variable "bs-protocol" {
+  type = string
+}
+
+variable "bs-session" {
+  type = string
+}
+
+variable "bs-mode" {
+  type = string
+}

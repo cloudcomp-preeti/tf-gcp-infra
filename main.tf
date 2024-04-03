@@ -4,6 +4,12 @@ provider "google" {
   region      = var.region
 }
 
+resource "google_compute_region_ssl_certificate" "ssl_cert" {
+  name        = var.ssl-name
+  certificate = file(var.ssl-certificate)
+  private_key = file(var.ssl-key)
+}
+
 resource "google_compute_network" "vpc" {
   name                    = var.vpc-network
   auto_create_subnetworks = false
@@ -26,6 +32,15 @@ resource "google_compute_subnetwork" "db_subnet" {
   network       = google_compute_network.vpc.self_link
 }
 
+resource "google_compute_subnetwork" "proxy_only_subnet" {
+  name          = var.proxy-name 
+  ip_cidr_range = var.proxy-cidr
+  region        = var.region
+  network       = google_compute_network.vpc.self_link
+  purpose       = var.proxy-purpose
+  role          = var.proxy-role
+}
+
 resource "google_compute_route" "webapp_route" {
   name        = var.webapp-route
   dest_range  = var.route-config
@@ -44,18 +59,17 @@ output "latest_custom_image_name" {
 resource "google_compute_firewall" "allow" {
   name    = var.allow-firewall
   network = google_compute_network.vpc.self_link
-
+  direction     = var.dir
   allow {
     protocol = "icmp"
   }
 
   allow {
     protocol = "tcp"
-    ports    = [var.application_port, var.postgres-port, var.ssh-port]
+    ports    = [var.application_port, var.ssh-port, var.https-port]
   }
   target_tags = ["http-server"]
-  source_ranges = ["0.0.0.0/0", google_compute_subnetwork.webapp_subnet.ip_cidr_range]
-  
+  source_ranges = [google_compute_subnetwork.proxy_only_subnet.ip_cidr_range, "10.129.0.0/23", "130.211.0.0/22", "35.191.0.0/16"]
 }
 
 resource "google_compute_firewall" "deny" {
@@ -156,11 +170,9 @@ resource "google_project_iam_binding" "pubsub_publisher_binding" {
 resource "google_dns_record_set" "dns_record" {
   name        = var.dns-const
   type        = "A"
-  ttl         = 200
+  ttl         = 30
   managed_zone = var.dns-managed-zone
-  rrdatas = [
-    google_compute_instance.vm-instance.network_interface.0.access_config.0.nat_ip,
-  ]
+  rrdatas = [google_compute_address.default.address]
 }
 
 resource "google_pubsub_topic" "verify_email" {
@@ -274,30 +286,29 @@ resource "google_cloud_run_service_iam_member" "member" {
   depends_on = [ google_cloudfunctions2_function.verify_func,  google_service_account.pubsub_service_account]
 }
 
-resource "google_compute_instance" "vm-instance" {
-  boot_disk {
-    initialize_params {
-      image = data.google_compute_image.latest_custom_image.self_link
-      size  = 100
-      type  = var.init-type
-    }
-  }
+resource "google_compute_region_instance_template" "vm-instance-template" {
+  name = var.vm-template-name
+  description = var.vm-template-desc
+  tags = [var.vm-tags]
   machine_type = var.machine-type
-  name         = var.ins-name
-
+  depends_on = [ google_compute_firewall.allow, google_compute_subnetwork.webapp_subnet, google_service_account.service_account]
+  disk {
+    source_image = data.google_compute_image.latest_custom_image.self_link
+    type  = var.init-type
+  }
+  service_account {
+    email  = google_service_account.service_account.email
+    scopes = [var.serv-scope]
+  }
+  lifecycle {
+    create_before_destroy = true
+  }
   network_interface {
     access_config {
     }
     network = google_compute_network.vpc.self_link
     subnetwork  = google_compute_subnetwork.webapp_subnet.self_link
   }
-
-  service_account {
-    email  = google_service_account.service_account.email
-    scopes = [var.serv-scope]
-  }
-
-  zone = var.zone
   metadata_startup_script = <<-EOT
     #!/bin/bash
     set -e
@@ -311,6 +322,123 @@ resource "google_compute_instance" "vm-instance" {
     echo "DB_DIALECT=${var.postgres_dialect}" >> "$env_file"
     echo "PUBSUB_TOPIC_NAME= projects/preeticloud/topics/${google_pubsub_topic.verify_email.name}" >> "$env_file"
   EOT
-  tags = [var.vm-tags]
-  depends_on = [ google_compute_firewall.allow, google_compute_subnetwork.webapp_subnet, google_service_account.service_account]
+}
+
+resource "google_compute_region_health_check" "http-health-check" {
+  name        = var.hc-name
+  description = var.hc-desc
+  region = var.region
+  timeout_sec         = 5
+  check_interval_sec  = 5
+  healthy_threshold   = 2
+  unhealthy_threshold = 2
+
+  http_health_check {
+    port_specification = var.hc-port-spec
+    port               = var.application_port
+    request_path       = var.hc-req-path
+    proxy_header       = var.hc-header
+  }
+}
+
+resource "random_id" "instance_group_suffix" {
+  byte_length = 4
+}
+
+resource "google_compute_region_instance_group_manager" "instance_group" {
+  name = var.gm-name
+  base_instance_name         = var.gm-base-name
+  region                     = var.region
+  distribution_policy_zones = ["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"]
+  version {
+    instance_template = google_compute_region_instance_template.vm-instance-template.self_link
+  }
+  target_pools = [google_compute_target_pool.foobar.id]
+  target_size  = 2
+  named_port {
+    name = "http"
+    port = 3000
+  }
+  auto_healing_policies {
+    health_check      = google_compute_region_health_check.http-health-check.id
+    initial_delay_sec = 300
+  }
+  instance_lifecycle_policy {
+    force_update_on_repair    = "NO"
+    default_action_on_failure = "REPAIR"
+  }
+  depends_on = [google_compute_region_instance_template.vm-instance-template]
+}
+
+resource "google_compute_target_pool" "foobar" {
+  name = var.pool-name
+}
+
+resource "google_compute_region_autoscaler" "instance_autoscaler" {
+  name   = var.as-name
+  region = var.region
+  target = google_compute_region_instance_group_manager.instance_group.id
+
+  autoscaling_policy {
+    max_replicas    = 8
+    min_replicas    = 4
+    cooldown_period = 180
+    mode            = var.as-mode
+
+    cpu_utilization {
+      target = 0.1
+    }
+  }
+}
+
+resource "google_compute_address" "default" {
+  name         = var.gca-name
+  address_type = var.gca-addr
+  network_tier = var.gca-ntk
+  region       = var.region
+}
+
+# forwarding rule
+resource "google_compute_forwarding_rule" "forwarding_rule" {
+  region = var.region
+  name                  = var.fr-name
+  depends_on = [google_compute_subnetwork.proxy_only_subnet]
+  ip_protocol           = var.fr-protocol
+  load_balancing_scheme = var.fr-scheme
+  port_range            = var.fr-port
+  network               = google_compute_network.vpc.id
+  target                = google_compute_region_target_https_proxy.target_proxy.id
+  ip_address            = google_compute_address.default.id
+  network_tier          = var.fr-tier
+}
+
+resource "google_compute_region_target_https_proxy" "target_proxy" {
+  name             = var.pt-name
+  url_map          = google_compute_region_url_map.url_map.id
+  ssl_certificates   = [google_compute_region_ssl_certificate.ssl_cert.id]
+  depends_on = [google_compute_region_ssl_certificate.ssl_cert]
+}
+
+resource "google_compute_region_url_map" "url_map" {
+  name            = var.um-name
+  region = var.region
+  default_service = google_compute_region_backend_service.backend_service.id
+}
+
+resource "google_compute_region_backend_service" "backend_service" {
+  name        = var.bs-name
+  region = var.region
+  load_balancing_scheme = var.bs-scheme
+  port_name   = var.bs-portname
+  protocol    = var.bs-protocol
+  session_affinity      = var.bs-session
+  timeout_sec = 10
+
+  health_checks = [google_compute_region_health_check.http-health-check.id]
+
+  backend {
+    group              = google_compute_region_instance_group_manager.instance_group.instance_group
+    balancing_mode     = var.bs-mode
+    capacity_scaler    = 1.0
+  }
 }
