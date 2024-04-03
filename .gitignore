@@ -9,6 +9,8 @@
 
 cred-google.json
 
+ssl-cert
+
 # Crash log files
 crash.log
 crash.*.log
