@@ -444,3 +444,31 @@ variable "bs-session" {
 variable "bs-mode" {
   type = string
 }
+
+variable "keyring" {
+  type = string
+}
+
+variable "vmkey" {
+  type = string
+}
+
+variable "rotper" {
+  type = string
+}
+
+variable "rotper" {
+  type = string
+}
+
+variable "kmskey" {
+  type = string
+}
+
+variable "encdec" {
+  type = string
+}
+
+variable "" {
+  type = string
+}
