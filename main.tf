@@ -4,10 +4,49 @@ provider "google" {
   region      = var.region
 }
 
+provider "google-beta" {
+  credentials = file(var.googlecred)
+  project     = var.project_id
+  region      = var.region
+}
+
 resource "google_compute_region_ssl_certificate" "ssl_cert" {
   name        = var.ssl-name
   certificate = file(var.ssl-certificate)
   private_key = file(var.ssl-key)
+}
+
+resource "google_kms_key_ring" "key_ring" {
+  name     = var.keyring
+  location = var.region
+}
+
+resource "google_kms_crypto_key" "vm_key" {
+  name            = var.vmkey
+  key_ring        = google_kms_key_ring.key_ring.id
+  rotation_period = var.rotper
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+resource "google_kms_crypto_key" "cloudsql_key" {
+  name            = var.rotper
+  key_ring        = google_kms_key_ring.key_ring.id
+  rotation_period = var.rotper
+  purpose  = "ENCRYPT_DECRYPT"
+  lifecycle {
+    prevent_destroy = false
+  }
+}
+
+resource "google_kms_crypto_key" "storage_key" {
+  name            = var.kmskey
+  key_ring        = google_kms_key_ring.key_ring.id
+  rotation_period = var.rotper
+  lifecycle {
+    prevent_destroy = false
+  }
 }
 
 resource "google_compute_network" "vpc" {
@@ -106,7 +145,7 @@ resource "google_sql_database_instance" "db_instance" {
   region           = var.region
 
   deletion_protection = false
-  depends_on = [google_service_networking_connection.default]
+  depends_on = [google_service_networking_connection.default, google_project_iam_binding.cloudsql_binding]
   database_version    = var.database_version
   settings {
     tier = var.db_tier
@@ -118,6 +157,7 @@ resource "google_sql_database_instance" "db_instance" {
       private_network = google_compute_network.vpc.id
     }
   }
+  encryption_key_name = google_kms_crypto_key.cloudsql_key.id
 }
 
 resource "google_sql_database" "webapp_db" {
@@ -147,6 +187,15 @@ resource "google_service_account" "service_account" {
 resource "google_project_iam_binding" "logging_admin_binding" {
   project = var.project_id
   role    = var.role-logging
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}"
+  ]
+}
+
+
+resource "google_project_iam_binding" "cloudsql_binding" {
+  project = var.project_id
+  role    = "roles/cloudsql.admin"
   members = [
     "serviceAccount:${google_service_account.service_account.email}"
   ]
@@ -205,11 +254,43 @@ data "archive_file" "default" {
   source_dir  = var.source_dir
 }
 
+data "google_storage_project_service_account" "gcs_account" {
+}
+
+resource "google_kms_crypto_key_iam_binding" "storage_binding" {
+  crypto_key_id = google_kms_crypto_key.storage_key.id
+  role          = var.encdec
+  members = ["serviceAccount:${data.google_storage_project_service_account.gcs_account.email_address}"]
+}
+
+resource "google_project_service_identity" "gcp_sa_cloud_sql" {
+  provider = google-beta
+  service  = "sqladmin.googleapis.com"
+}
+
+resource "google_kms_crypto_key_iam_binding" "crypto_key" {
+  provider      = google-beta
+  crypto_key_id = google_kms_crypto_key.cloudsql_key.id
+  role          = var.encdec
+  members = ["serviceAccount:${google_project_service_identity.gcp_sa_cloud_sql.email}"]
+}
+
+resource "google_kms_crypto_key_iam_binding" "vm_crypto_key" {
+  provider      = google-beta
+  crypto_key_id = google_kms_crypto_key.vm_key.id
+  role          = var.encdec
+  members = ["serviceAccount:service-516208766981@compute-system.iam.gserviceaccount.com"]
+}
+
 resource "google_storage_bucket" "existing_bucket" {
   name     = "cloud-func-bucket-${random_id.bucket_suffix.hex}"
   location = var.region
   project  = var.project_id
   uniform_bucket_level_access = true
+  encryption {
+    default_kms_key_name = google_kms_crypto_key.storage_key.id
+  }
+  depends_on = [google_kms_crypto_key_iam_binding.storage_binding]
 }
 
 resource "google_storage_bucket_object" "existing_object" {
@@ -294,18 +375,23 @@ resource "google_compute_region_instance_template" "vm-instance-template" {
   depends_on = [ google_compute_firewall.allow, google_compute_subnetwork.webapp_subnet, google_service_account.service_account]
   disk {
     source_image = data.google_compute_image.latest_custom_image.self_link
-    type  = var.init-type
-  }
+    auto_delete  = true
+    boot         = true
+    device_name  = "persistent-disk-0"
+    mode         = "READ_WRITE"
+    type         = "PERSISTENT"
+    disk_encryption_key {
+      kms_key_self_link = google_kms_crypto_key.vm_key.id
+    }
+  } 
   service_account {
     email  = google_service_account.service_account.email
     scopes = [var.serv-scope]
-  }
+  }  
   lifecycle {
     create_before_destroy = true
   }
   network_interface {
-    access_config {
-    }
     network = google_compute_network.vpc.self_link
     subnetwork  = google_compute_subnetwork.webapp_subnet.self_link
   }
@@ -353,7 +439,6 @@ resource "google_compute_region_instance_group_manager" "instance_group" {
   version {
     instance_template = google_compute_region_instance_template.vm-instance-template.self_link
   }
-  target_pools = [google_compute_target_pool.foobar.id]
   target_size  = 2
   named_port {
     name = "http"
@@ -367,11 +452,16 @@ resource "google_compute_region_instance_group_manager" "instance_group" {
     force_update_on_repair    = "NO"
     default_action_on_failure = "REPAIR"
   }
+  update_policy {
+    type                           = "PROACTIVE"
+    instance_redistribution_type   = "PROACTIVE"
+    minimal_action                 = "REPLACE"
+    most_disruptive_allowed_action = "REPLACE"
+    max_surge_percent              = 0
+    max_unavailable_fixed          = 4
+    replacement_method             = "RECREATE"
+  }
   depends_on = [google_compute_region_instance_template.vm-instance-template]
-}
-
-resource "google_compute_target_pool" "foobar" {
-  name = var.pool-name
 }
 
 resource "google_compute_region_autoscaler" "instance_autoscaler" {
