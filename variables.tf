@@ -453,7 +453,7 @@ variable "vmkey" {
   type = string
 }
 
-variable "rotper" {
+variable "sqlkey" {
   type = string
 }
 
@@ -466,9 +466,5 @@ variable "kmskey" {
 }
 
 variable "encdec" {
-  type = string
-}
-
-variable "" {
   type = string
 }
